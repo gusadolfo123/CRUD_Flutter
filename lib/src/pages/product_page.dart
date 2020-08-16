@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:formvalidation/src/models/product_model.dart';
 import 'package:formvalidation/src/providers/products_provider.dart';
 import 'package:formvalidation/src/utils/utils.dart' as utils;
+import 'package:image_picker/image_picker.dart';
 
 class ProductPage extends StatefulWidget {
   @override
@@ -10,22 +13,31 @@ class ProductPage extends StatefulWidget {
 
 class _ProductPageState extends State<ProductPage> {
   final formkey = GlobalKey<FormState>();
-  final product = ProductModel();
+  ProductModel product = ProductModel();
   final productProvider = new ProductProvider();
+  final scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _saving = false;
+  final imagePicker = ImagePicker();
+  PickedFile photo;
 
   @override
   Widget build(BuildContext context) {
+    final ProductModel prodData = ModalRoute.of(context).settings.arguments;
+
+    if (prodData != null) product = prodData;
+
     return Scaffold(
+      key: scaffoldKey,
       appBar: AppBar(
         title: Text("Productos"),
         actions: <Widget>[
           IconButton(
             icon: Icon(Icons.photo_size_select_actual),
-            onPressed: () {},
+            onPressed: _selectPhoto,
           ),
           IconButton(
             icon: Icon(Icons.camera_alt),
-            onPressed: () {},
+            onPressed: _takePhoto,
           )
         ],
       ),
@@ -36,6 +48,7 @@ class _ProductPageState extends State<ProductPage> {
             key: formkey,
             child: Column(
               children: <Widget>[
+                _viewPhoto(),
                 _createName(),
                 _createPrice(),
                 _createInStock(context),
@@ -47,6 +60,41 @@ class _ProductPageState extends State<ProductPage> {
         ),
       ),
     );
+  }
+
+  Widget _viewPhoto() {
+    if (product.photoUrl != null && product.photoUrl != "") {
+      return Container(
+          child: FadeInImage(
+        image: NetworkImage(product.photoUrl),
+        placeholder: AssetImage("assets/img/jar-loading.gif"),
+        height: 300.0,
+        width: double.infinity,
+        fit: BoxFit.cover,
+      ));
+    } else {
+      return Image(
+        image: AssetImage(photo?.path ?? "assets/img/no-image.png"),
+      );
+    }
+  }
+
+  _selectPhoto() async {
+    _processImage(ImageSource.gallery);
+  }
+
+  _takePhoto() async {
+    _processImage(ImageSource.camera);
+  }
+
+  _processImage(ImageSource source) async {
+    photo = await imagePicker.getImage(source: source);
+    if (photo != null) {
+      // limpieza
+      product.photoUrl = null;
+    }
+
+    setState(() {});
   }
 
   Widget _createInStock(BuildContext context) {
@@ -97,21 +145,43 @@ class _ProductPageState extends State<ProductPage> {
       textColor: Colors.white,
       label: Text("Guardar"),
       icon: Icon(Icons.save),
-      onPressed: _submit,
+      onPressed: (_saving) ? null : _submit,
     );
   }
 
-  void _submit() {
+  void _submit() async {
     if (!formkey.currentState.validate()) return;
 
     // dispara el onSave de todos los tectFormField
     formkey.currentState.save();
 
-    print("ok");
-    print(product.title);
-    print(product.value);
-    print(product.inStock);
+    setState(() {
+      _saving = true;
+    });
 
-    productProvider.createProduct(product);
+    if (photo != null) {
+      product.photoUrl = await productProvider.uploadImage(photo);
+    }
+
+    if (product.id == null)
+      productProvider.createProduct(product);
+    else
+      productProvider.updateProduct(product);
+
+    setState(() {
+      _saving = false;
+    });
+    showSnackBar("Registro guardado");
+
+    Navigator.pop(context);
+  }
+
+  void showSnackBar(String message) {
+    final snackbar = SnackBar(
+      content: Text(message),
+      duration: Duration(milliseconds: 1500),
+    );
+
+    scaffoldKey.currentState.showSnackBar(snackbar);
   }
 }
